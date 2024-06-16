@@ -1,0 +1,4 @@
+name: biomedgpt-7b
+path: PharMolix/BioMedGPT-LM-7B
+attn_implementation: flash_attention_2
+start_stage: 2

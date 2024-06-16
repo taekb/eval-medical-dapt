@@ -1,0 +1,4 @@
+name: llama-2-7b
+path: meta-llama/Llama-2-7b-hf
+attn_implementation: flash_attention_2
+start_stage: 0

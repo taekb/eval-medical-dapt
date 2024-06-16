@@ -1,0 +1,14 @@
+# LLaVA-Med pretrained up to Stage 2 (medical visual instruction tuning) on 60K-IM medical visual instruction tuning dataset constructed using GPT-4.
+# Stage 1: 1 epoch
+# Stage 2: 3 epochs
+
+name: llava-med-7b
+base: null
+path: /data/llava-med/llava-med-7b/stage-2 # Update to LLaMA-7B weight path as needed
+config:
+  conv_mode: llava_v0
+  temperature: 0
+  top_p: null
+  num_beams: 1
+  max_new_tokens: 64
+  attn_implementation: flash_attention_2

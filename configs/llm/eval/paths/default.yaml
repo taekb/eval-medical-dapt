@@ -1,0 +1,4 @@
+hf_cache_dir: /data/hf_models
+model_root_dir: /data
+data_root_dir: /data
+project_root_dir: ~/projects/eval-medical-dapt

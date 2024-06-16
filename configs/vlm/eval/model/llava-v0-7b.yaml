@@ -1,0 +1,12 @@
+# General-domain LLaVA-v0-7B
+
+name: llava-v0-7b
+base: null
+path: /data/llava-med/llava-7b-v0 # # Update to merged weight path as needed
+config:
+  conv_mode: llava_v0
+  temperature: 0
+  top_p: null
+  num_beams: 1
+  max_new_tokens: 64
+  attn_implementation: flash_attention_2

@@ -1,0 +1,3 @@
+name: vqa-rad
+qa_dir: vqa-rad/closed
+image_dir: vqa-rad/images

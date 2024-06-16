@@ -1,0 +1,4 @@
+name: openbiollm-8b
+path: aaditya/Llama3-OpenBioLLM-8B
+attn_implementation: flash_attention_2
+start_stage: 0

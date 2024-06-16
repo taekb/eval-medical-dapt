@@ -1,0 +1,13 @@
+name: open-flamingo-9b
+path: openflamingo/OpenFlamingo-9B-deprecated
+config:
+  lang_encoder_path: /data/llama-v1-weights/7B # Update to LLaMA-7B weight path as needed
+  tokenizer_path: /data/llama-v1-weights/7B # Update to LLaMA-7B weight path as needed
+  clip_vision_encoder_path: ViT-L-14
+  clip_vision_encoder_pretrained: openai
+  cross_attn_every_n_layers: 4
+  attn_implementation: flash_attention_2
+  max_new_tokens: 64
+  temperature: 0
+  top_p: null
+  num_beams: 1

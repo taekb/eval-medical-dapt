@@ -1,0 +1,4 @@
+name: meditron-70b
+path: epfl-llm/meditron-70b
+attn_implementation: flash_attention_2
+start_stage: 2

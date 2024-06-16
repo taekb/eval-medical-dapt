@@ -1,0 +1,78 @@
+defaults:
+  - model: llava-med-7b
+  - dataset: vqa-rad
+  - paths: default
+  - _self_
+
+# Quantization config
+load_in_4bit: false
+load_in_8bit: false
+bf16: true
+fp16: false
+double_quant: true
+quant_type: nf4
+
+# Results root directory
+results_dir: ${paths.project_root_dir}/results/vlm
+
+# Debugging mode: Only evaluate on a small number of test examples
+debug: false
+
+# Verbosity
+verbose: false
+
+# Evaluation split
+eval_split: test
+
+# Accuracy evaluation method
+eval_method: exact-match
+
+# Force re-evaluation: Load and evaluate model regardless of whether results are already saved
+force_eval: false
+
+# Zero-shot/few-shot prompting
+prompt_type: zero-shot
+
+# Number of few-shot examples
+n_shot: 5
+
+# Constrain vocabulary to options
+constrain_vocab: false
+
+# Predict based on token logprobs
+predict_with_logprob: false
+
+# Number of random seeds to use for output sampling
+n_seeds: 1
+
+# Option to optimize the prompt
+optimize_prompt: false
+
+# Maximum number of validation samples to use for prompt optimization
+max_val_samples_for_optimization: 500
+
+# Option to use the prompt optimized for medical model
+use_med_prompt: false
+
+# Number of random seeds to use for system prompt, prompt template, and few-shot example sampling
+n_system_prompt_seeds: 3
+n_prompt_template_seeds: 10
+n_few_shot_seeds: 10
+
+# GPU indices
+gpu_ids:
+- 2
+- 3
+- 6
+- 7
+
+# HuggingFace API key
+hf_api_key: null
+
+# Hydra logging/output directory structure
+hydra:
+  run: 
+    dir: ${results_dir}/${dataset.name}/${model.name}/${format_subdir:${model.config.temperature},${prompt_type},${n_shot},${constrain_vocab},${predict_with_logprob},${n_seeds}}
+  sweep:
+    dir: ${results_dir}/${dataset.name}/${model.name}
+    subdir: ${format_subdir:${model.config.temperature},${prompt_type},${n_shot},${constrain_vocab},${predict_with_logprob},${n_seeds}}
