@@ -1,13 +1,15 @@
 # Medical Adaptation of Large Language and Vision-Language Models: Are We Making Progress?
 
-This is the source code repository for the paper: "Medical Adaptation of Large Language and Vision-Language Models: Are We Making Progress?"
+This is the official repository for the paper: 
+> Daniel P. Jeong, Saurabh Garg, Zachary C. Lipton, and Michael Oberst. Medical Adaptation of Large Language and Vision-Language Models: Are We Making Progress? *Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing (EMNLP)*.
 
-We include all of the code used for preprocessing the medical QA datasets and running the main zero-/few-shot prompting experiments discussed in Section 3 and 4. For all medical and general-domain LLMs and VLMs used for evaluation, we use the HuggingFace checkpoints listed below.
+We include all of the code used for preprocessing the medical QA datasets and running the main zero-/few-shot prompting experiments discussed in Sections 3 and 4 of the paper. For all medical and general-domain LLMs and VLMs used for evaluation, we use the HuggingFace checkpoints listed below.
 
 LLMs
 - OpenBioLLM-70B: `aaditya/Llama3-OpenBioLLM-70B`
 - Llama-3-70B-Instruct: `meta-llama/Meta-Llama-3-70B-Instruct`
 - MediTron-70B: `epfl-llm/meditron-70b`
+- Clinical-Camel-70B: `wanglab/ClinicalCamel-70B`
 - Llama-2-70B: `meta-llama/Llama-2-70b-hf`
 - OpenBioLLM-8B: `aaditya/Llama3-OpenBioLLM-8B`
 - Llama-3-8B: `meta-llama/Meta-Llama-3-8B`
