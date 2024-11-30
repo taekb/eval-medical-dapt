@@ -1,10 +1,10 @@
 # The Limited Impact of Medical Adaptation of Large Language and Vision-Language Models
 
 <p align="center">
-    <img src="./eval-medical-dapt-robots-fighting.webp" alt="image" width="30%">
+    <img src="./figs/eval-medical-dapt-robots-fighting.webp" alt="image" width="30%">
 </p>
 
-<br>
+<br>n
 
 This is the official repository for the EMNLP 2024 paper (Oral): 
 > Daniel P. Jeong, Saurabh Garg, Zachary C. Lipton, and Michael Oberst. [Medical Adaptation of Large Language and Vision-Language Models: Are We Making Progress?](https://arxiv.org/abs/2411.04118) *Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing (EMNLP)*.
