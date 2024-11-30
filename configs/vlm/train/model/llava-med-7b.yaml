@@ -1,0 +1,16 @@
+# LLaVA-Med pretrained up to Stage 2 (medical visual instruction tuning) on 60K-IM medical visual instruction tuning dataset constructed using GPT-4.
+# Stage 1: 1 epoch
+# Stage 2: 3 epochs
+
+name: llava-med-7b
+version: v0
+path: llava-med/llava-med-7b/stage-2 # Modify as needed
+vision_tower: openai/clip-vit-large-patch14
+attn_implementation: flash_attention_2
+mm_vision_select_layer: -2
+mm_projector_type: linear
+mm_use_im_start_end: true
+mm_use_im_patch_token: true
+mm_vision_select_feature: patch
+start_stage: 2
+model_max_length: 2048

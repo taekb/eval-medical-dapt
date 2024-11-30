@@ -1,6 +1,7 @@
 import os
 import os.path as osp
 import json
+from functools import partial
 import socket
 import subprocess
 
@@ -26,7 +27,6 @@ def format_subdir(
     prompt_type,
     n_shot,
     constrain_vocab,
-    predict_with_logprob,
     n_seeds
 ):
     '''
@@ -37,7 +37,6 @@ def format_subdir(
     subdir = f'T={temperature},'
     subdir += f'prompt={f"{n_shot}-shot" if prompt_type == "few-shot" else "zero-shot"},'
     subdir += f'constrain_vocab={constrain_vocab},'
-    subdir += f'pred_logprob={predict_with_logprob},'
     subdir += f'n_seeds={n_seeds}'
 
     return subdir
@@ -49,7 +48,10 @@ def check_vllm(args):
 
     use_vllm = True
 
-    if 'lora' in args.model.name:
+    if 'qlora' in args.model.name:
+        use_vllm = False
+
+    elif 'lora' in args.model.name:
         # Get LoRA config
         adapter_config = json.load(open(osp.join(args.model.path, 'adapter_config.json')))
         lora_r = adapter_config['r']
@@ -124,32 +126,46 @@ def main(args: DictConfig) -> None:
         else:
             logging.info('Using accelerate, as vLLM is not supported for this model.')
             
-            # Set up command-line arguments to pass
-            accelerate_config_path = osp.join(DIST_CONFIG_DIR, 'inference.yaml')
+            # Single-process, multi-GPU inference for 70B models that are too large
+            if '70b' in args.model.name:
+                env = os.environ.copy()
+                env['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in gpu_ids])
+                
+                command = ['python3', subprocess_script]
+                command += ['--log_dir', log_dir]
+                command += ['--config_path', config_path]
+                command += ['--use_accelerate_single_process']
 
-            command = ['accelerate', 'launch']
-            command += ['--config_file', accelerate_config_path]
-            command += ['--gpu_ids', ','.join([str(i) for i in gpu_ids])]
-            command += ['--num_processes', str(len(gpu_ids))]
-            
-            # Add masterport
-            master_port = DEFAULT_MASTER_PORT
-            found_open_port = False
-            while not found_open_port:
-                if port_in_use(master_port):
-                    master_port += 1
-                else:
-                    found_open_port = True
+                run_subprocess(command, env=env)
 
-            command += ['--main_process_port', str(master_port)]
+            # Multi-process, multi-GPU data-parallel inference for sufficiently small models
+            else:
+                # Set up command-line arguments to pass
+                accelerate_config_path = osp.join(DIST_CONFIG_DIR, 'inference.yaml')
 
-            # Add subprocess arguments
-            command += [subprocess_script]
-            command += ['--log_dir', log_dir]
-            command += ['--config_path', config_path]
+                command = ['accelerate', 'launch']
+                command += ['--config_file', accelerate_config_path]
+                command += ['--gpu_ids', ','.join([str(i) for i in gpu_ids])]
+                command += ['--num_processes', str(len(gpu_ids))]
+                
+                # Add masterport
+                master_port = DEFAULT_MASTER_PORT
+                found_open_port = False
+                while not found_open_port:
+                    if port_in_use(master_port):
+                        master_port += 1
+                    else:
+                        found_open_port = True
 
-            # Run inference as subprocess
-            run_subprocess(command)
+                command += ['--main_process_port', str(master_port)]
+
+                # Add subprocess arguments
+                command += [subprocess_script]
+                command += ['--log_dir', log_dir]
+                command += ['--config_path', config_path]
+
+                # Run inference as subprocess
+                run_subprocess(command)
 
 if __name__ == '__main__':
     main()

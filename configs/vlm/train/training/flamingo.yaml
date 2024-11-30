@@ -1,0 +1,52 @@
+# Training stage
+# Stage 2 = Medical Pretraining
+# Stage 3 = Fine-tuning
+train_stage: 3
+
+# Quantization config
+bits: 16
+precision: amp_bf16
+double_quant: true # Not used unless bits is set to 4
+quant_type: nf4
+
+# Compute dtype
+fp16: false
+bf16: true
+
+# Optimizer
+#optim: adamw_torch
+
+# Training configs
+num_epochs: 10
+batch_size: 16
+gradient_accumulation_steps: 1
+gradient_checkpointing: false
+learning_rate: 2e-5
+weight_decay: 0.1
+warmup_ratio: 0.05
+lr_scheduler: cosine
+
+# Checkpointing & logging
+#save_total_limit: 1
+offline: false
+resume_from_checkpoint: null
+delete_previous_checkpoint: true
+report_to_wandb: false
+save_checkpoints_to_wandb: false
+
+# Option to freeze <image> and <|endofchunk|> token embeddings
+freeze_lm_embeddings: false
+
+# Distributed training config
+fsdp: true
+fsdp_use_orig_params: true
+fsdp_sharding_strategy: full
+
+# LoRA config
+# NOTE: LoRA currently not implemented for Flamingo.
+lora_enable: false
+lora_r: 128
+lora_alpha: 16
+lora_dropout: 0
+lora_bias: none
+use_rslora: false

@@ -1,0 +1,32 @@
+defaults:
+  - model: llava-v0-7b
+  - training: llava
+  - dataset: vqa-rad
+  - paths: default
+  - _self_
+
+# Update dataset paths
+image_folder: ${paths.data_root_dir}/${dataset.image_folder}
+data_path: ${paths.data_root_dir}/${dataset.data_path}
+eval_data_path: ${paths.data_root_dir}/${dataset.eval_data_path}
+
+# Update model path if it is local
+path: ${update_model_path:${paths.model_root_dir},${model.path}}
+
+# Force training even when previous checkpoint exists
+force_train: false
+
+# Seed for model initialization and training
+seed: 42
+
+gpu_ids:
+- 0
+- 1
+
+ckpt_dir: ${paths.project_root_dir}/ckpts/vlm
+output_dir: ${ckpt_dir}/${model.name}/start-${model.start_stage},train-${training.train_stage}/${format_subdir:${model},${training},${dataset},${gpu_ids}}
+report_to: wandb
+
+hydra:
+  run:
+    dir: ${ckpt_dir}/${model.name}/start-${model.start_stage},train-${training.train_stage}/${format_subdir:${model},${training},${dataset},${gpu_ids}}

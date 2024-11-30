@@ -3,7 +3,7 @@
 # Check if model and dataset names are provided
 if [ "$#" -ne 5 ]; then
     echo "Usage: $0 \"arg1 arg2 ...\" \"arg1 arg2 ...\" \"arg1 arg2 ...\" \"arg\" \"arg\""
-    echo "Arg1: Models, Arg2: Datasets, Arg3: GPU indices, Arg4: Generation approach (one of \"greedy\"/\"sc\"/\"logprob\"), Arg5: Optimize prompts (\"true\"/\"false\")"
+    echo "Arg1: Models, Arg2: Datasets, Arg3: GPU indices, Arg4: Generation approach (one of \"greedy\"/\"logprob\"), Arg5: Optimize prompts (\"true\"/\"false\")"
     echo "Example: $0 \"llava-med-7b llava-v0-7b\" \"vqa-rad pvqa slake\" \"0 1 2 3\" \"greedy\" \"true\""
     exit 1
 fi
@@ -17,19 +17,16 @@ IFS=',' gpus="${gpus[*]}"
 # Greedy decoding
 if [[ $4 == "greedy" ]]; then
     n_seeds=1
-    predict_with_logprob="false"
+    temperature=0
+    constrain_vocab="false"
 
-# Self-consistency decoding
-elif [[ $4 == "sc" ]]; then
-    n_seeds=5
-    predict_with_logprob="false"
-
-# Top-token prediction
+# Constrained log-probability prediction
 elif [[ $4 == "logprob" ]]; then
     n_seeds=1
-    predict_with_logprob="true"
+    temperature=0
+    constrain_vocab="true"
 else
-    echo "Invalid generation approach. Choose one of \"greedy\"/\"sc\"/\"logprob\"."
+    echo "Invalid generation approach. Choose one of \"greedy\"/\"logprob\"."
     exit 1
 fi
 
@@ -54,10 +51,11 @@ for dataset in "${datasets[@]}"; do
             prompt_type=zero-shot \
             load_in_4bit=false \
             n_seeds="${n_seeds}" \
-            force_eval=true \
+            temperature="${temperature}" \
+            force_eval=false \
             verbose=true \
             optimize_prompt="${optimize_prompt}" \
-            predict_with_logprob="${predict_with_logprob}"
+            constrain_vocab="${constrain_vocab}"
         
         # Run few-shot inference if the model hasn't been fine-tuned
         for n in "${n_shots[@]}"; do
@@ -69,11 +67,12 @@ for dataset in "${datasets[@]}"; do
                 prompt_type=few-shot \
                 load_in_4bit=false \
                 n_seeds="${n_seeds}" \
+                temperature="${temperature}" \
                 n_shot="${n}" \
-                force_eval=true \
+                force_eval=false \
                 verbose=true \
                 optimize_prompt="${optimize_prompt}" \
-                predict_with_logprob="${predict_with_logprob}"
+                constrain_vocab="${constrain_vocab}"
         done
     done
 done

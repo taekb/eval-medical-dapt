@@ -47,19 +47,23 @@ force_eval: false
 prompt_type: zero-shot
 
 # Number of few-shot examples
-n_shot: 5
+n_shot: 3
 
-# Constrain vocabulary to options
+# Constrain vocabulary to option letters
 constrain_vocab: false
-
-# Predict based on token logprobs
-predict_with_logprob: false
 
 # Number of random seeds to use for output sampling
 n_seeds: 1
 
 # Option to optimize the prompt
 optimize_prompt: false
+
+# Option to use the optimized prompt (prompt optimization must have already been run)
+use_optimized_prompt: false
+
+# Option to use the prompt optimized for medical model
+use_med_prompt: false
+med_model_name: null
 
 # Maximum number of validation samples to use for prompt optimization
 max_val_samples_for_optimization: 500
@@ -69,16 +73,13 @@ n_system_prompt_seeds: 3
 n_prompt_template_seeds: 10
 n_few_shot_seeds: 10
 
-# Option to use the prompt optimized for medical model
-use_med_prompt: false
-
 # HuggingFace API key
 hf_api_key: null
 
 # Hydra logging/output directory structure
 hydra:
   run: 
-    dir: ${results_dir}/${dataset.name}/${model.name}/${format_subdir:${temperature},${prompt_type},${n_shot},${constrain_vocab},${predict_with_logprob},${n_seeds}}
+    dir: ${results_dir}/${dataset.name}/${model.name}/${format_subdir:${temperature},${prompt_type},${n_shot},${constrain_vocab},${n_seeds}}
   sweep:
     dir: ${results_dir}/${dataset.name}/${model.name}
-    subdir: ${format_subdir:${temperature},${prompt_type},${n_shot},${constrain_vocab},${predict_with_logprob},${n_seeds}}
+    subdir: ${format_subdir:${temperature},${prompt_type},${n_shot},${constrain_vocab},${n_seeds}}

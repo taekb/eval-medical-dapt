@@ -1,0 +1,4 @@
+name: biomistral-7b
+path: BioMistral/BioMistral-7B
+attn_implementation: flash_attention_2
+start_stage: 2

@@ -1,0 +1,4 @@
+name: clinical-camel-70b
+path: wanglab/ClinicalCamel-70B
+attn_implementation: flash_attention_2
+start_stage: 2

@@ -1,0 +1,25 @@
+# Python
+__pycache__
+*.pyc
+*.egg-info
+
+# Log
+*.log
+*.log.*
+
+# Editor
+*.swp
+
+# Other
+.DS_Store
+wandb
+output
+multirun
+
+checkpoints
+ckpts*
+
+.ipynb_checkpoints
+
+# DevContainer
+!.devcontainer/*

@@ -1,0 +1,43 @@
+defaults:
+  - model: llama-2-7b
+  - dataset: medqa
+  - training: llm
+  - paths: default
+  - _self_
+
+# Update model path if it is local
+path: ${update_model_path:${paths.model_root_dir},${model.path}}
+
+# Update dataset path if it is local
+data_path: ${update_data_path:${paths.data_root_dir},${dataset.data_path}}
+
+# DeepSpeed ZeRO stage
+zero_stage: 2
+
+# Force training even when previous checkpoint exists
+force_train: false
+
+# Seed for model initialization and training
+seed: 42
+
+# Number of nodes
+n_nodes: 1
+
+# Head node IP (only used for multi-node training)
+head_node_ip: null
+
+# GPU IDs
+gpu_ids:
+- 0
+- 1
+
+# HuggingFace API key
+hf_api_key: null
+
+ckpt_dir: ${paths.project_root_dir}/ckpts/llm
+output_dir: ${ckpt_dir}/${model.name}/start-${model.start_stage},train-${training.train_stage}/${format_subdir:${training},${dataset},${n_nodes},${gpu_ids}}
+report_to: wandb
+
+hydra:
+  run:
+    dir: ${ckpt_dir}/${model.name}/start-${model.start_stage},train-${training.train_stage}/${format_subdir:${training},${dataset},${n_nodes},${gpu_ids}}

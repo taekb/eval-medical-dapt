@@ -10,10 +10,10 @@ pip install --upgrade pip
 
 conda install -y nvidia::cuda-toolkit=12.1
 conda install -y pytorch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 pytorch-cuda=12.1 -c pytorch -c nvidia
-pip install transformers==4.40.2
-pip install bitsandbytes==0.43.1
-pip install accelerate==0.30.0
-pip install deepspeed
+pip install transformers==4.44.2
+pip install bitsandbytes==0.43.3
+pip install accelerate==0.33.0
+pip install deepspeed==0.14.5
 pip install peft
 pip install datasets
 pip install wandb
@@ -21,6 +21,7 @@ pip install hydra-core
 pip install scikit-learn
 pip install ipykernel ipywidgets jupyterlab
 pip install vllm
+pip install langchain
 pip install matplotlib
 pip install seaborn
 

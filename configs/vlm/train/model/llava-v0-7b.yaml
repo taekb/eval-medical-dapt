@@ -1,0 +1,14 @@
+# General-domain LLaVA-v0-7B
+
+name: llava-v0-7b
+version: v0
+path: llava-med/llava-7b-v0 # Modify as needed
+vision_tower: openai/clip-vit-large-patch14
+attn_implementation: flash_attention_2
+mm_vision_select_layer: -2
+mm_projector_type: linear
+mm_use_im_start_end: true
+mm_use_im_patch_token: true
+mm_vision_select_feature: patch
+start_stage: 0
+model_max_length: 2048

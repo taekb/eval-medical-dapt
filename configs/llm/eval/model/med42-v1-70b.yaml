@@ -1,0 +1,4 @@
+name: med42-v1-70b
+path: m42-health/med42-70b
+attn_implementation: flash_attention_2
+start_stage: 2

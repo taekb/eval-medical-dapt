@@ -1,0 +1,43 @@
+# Training stage
+# Stage 2 = Medical Pretraining
+# Stage 3 = Fine-tuning
+train_stage: 3
+
+# Quantization config
+bits: 16
+double_quant: true
+quant_type: nf4
+
+# Compute dtype
+fp16: false
+bf16: true
+
+# Optimizer
+optim: adamw_torch
+
+# Training configs
+num_train_epochs: 10
+per_device_train_batch_size: 32
+per_device_eval_batch_size: 32
+gradient_accumulation_steps: 1 
+gradient_checkpointing: true
+evaluation_strategy: epoch
+eval_accumulation_steps: 1
+save_strategy: epoch
+save_total_limit: 1
+learning_rate: 2e-5
+weight_decay: 0.
+warmup_ratio: 0.05
+lr_scheduler_type: cosine
+logging_strategy: steps
+logging_steps: 10
+tf32: true
+dataloader_num_workers: 4
+
+# LoRA config
+lora_enable: true
+lora_r: 128
+lora_alpha: 16
+lora_dropout: 0.
+lora_bias: none
+use_rslora: false

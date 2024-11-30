@@ -1,4 +1,4 @@
-hf_cache_dir: /data/hf_models
-model_root_dir: /data
-data_root_dir: /data
-project_root_dir: ~/projects/eval-medical-dapt
+hf_cache_dir: /data/hf_models # Modify as needed
+model_root_dir: /data/hf_models # Modify as needed
+data_root_dir: /data # Modify as needed
+project_root_dir: /home/projects/eval-medical-dapt # Modify as needed

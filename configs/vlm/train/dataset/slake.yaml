@@ -1,0 +1,4 @@
+name: slake
+image_folder: 'slake/imgs'
+data_path: 'slake/combined/train.jsonl'
+eval_data_path: 'slake/combined/val.jsonl'

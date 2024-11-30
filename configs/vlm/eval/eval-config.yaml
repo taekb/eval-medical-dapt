@@ -61,13 +61,11 @@ n_few_shot_seeds: 10
 
 # GPU indices
 gpu_ids:
-- 2
-- 3
-- 6
-- 7
+- 0
+- 1
 
 # HuggingFace API key
-hf_api_key: null
+hf_api_key: null # Add your API key
 
 # Hydra logging/output directory structure
 hydra:

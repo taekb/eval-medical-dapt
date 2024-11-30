@@ -23,7 +23,7 @@ tqdm = partial(std_tqdm, dynamic_ncols=True)
 
 from sklearn.model_selection import train_test_split
 
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
@@ -39,7 +39,14 @@ IGNORE_INDEX = -100
 DEFAULT_SEED = 42
 
 N_MCQ = {
+    'mednli': 3,
+    'ehrnoteqa': 5,
+    'n2c2_2008-obesity_asthma': 4,
+    'n2c2_2008-obesity_cad': 4,
+    'n2c2_2008-obesity_diabetes': 4,
+    'n2c2_2008-obesity_obesity': 4,
     'medqa': 5,
+    'medqa-usmle': 4,
     'medmcqa': 4,
     'pubmedqa': 3,
     'mmlu_anatomy': 4,
@@ -55,16 +62,23 @@ N_MCQ = {
 
 # Models that use a chat template
 CHAT_MODELS = [
+    'wanglab/ClinicalCamel-70B',
     'aaditya/Llama3-OpenBioLLM-70B',
     'aaditya/Llama3-OpenBioLLM-8B',
+    'm42-health/Llama3-Med42-70B',
+    'm42-health/Llama3-Med42-8B',
     'meta-llama/Meta-Llama-3-70B-Instruct',
     'meta-llama/Meta-Llama-3-8B-Instruct',
     'meta-llama/Llama-2-7b-chat-hf',
     'mistralai/Mistral-7B-Instruct-v0.1',
 
+    'clinical-camel-70b',
     'openbiollm-70b',
     'openbiollm-8b',
-    'llama-3-70b',
+    'med42-v2-70b',
+    'med42-v2-8b',
+    'llama-3-70b-instruct',
+    'llama-3-8b-instruct',
     'llama-2-7b-chat',
     'mistral-7b-v0.1'
 ]
@@ -163,6 +177,7 @@ class QADataset(torch.utils.data.Dataset, metaclass=abc.ABCMeta):
         model_name: str, 
         dataset_name: str, 
         prompt_type: str, 
+        include_options: Optional[bool] = True,
         sample_kwargs: Optional[Dict] = None
     ) -> None:
         '''Load the prompt templates to use for prompting.'''
@@ -177,21 +192,25 @@ class QADataset(torch.utils.data.Dataset, metaclass=abc.ABCMeta):
         # Load default system prompt and template
         if sample_kwargs is None:
             self.system_prompt = get_llm_system_prompt(model_name, dataset_name)
-            self.prompt_template = get_llm_prompt_template(model_name, prompt_type=prompt_type)
+            self.prompt_template = get_llm_prompt_template(model_name, prompt_type=prompt_type, include_options=include_options)
 
         # Otherwise, randomly sample; unless the seed is None
         else:
-            n_mcq = N_MCQ[dataset_name]
+            if not any([d in dataset_name for d in ['casi-sense', 'mimic-iii-sense']]):
+                n_mcq = N_MCQ[dataset_name]
 
             if sample_kwargs['system_prompt_seed'] is None:
                 self.system_prompt = get_llm_system_prompt(model_name, dataset_name)
             else:
-                self.system_prompt = sample_llm_system_prompt(seed=sample_kwargs['system_prompt_seed']).format(chr(ord('A')+n_mcq-1))
+                self.system_prompt = sample_llm_system_prompt(seed=sample_kwargs['system_prompt_seed'])
+                
+                if dataset_name not in ['casi-sense', 'mimic-iii-sense']:
+                    self.system_prompt = self.system_prompt.format(chr(ord('A')+n_mcq-1))
 
             if sample_kwargs['prompt_template_seed'] is None:
-                self.prompt_template = get_llm_prompt_template(model_name, prompt_type=prompt_type)
+                self.prompt_template = get_llm_prompt_template(model_name, prompt_type=prompt_type, include_options=include_options)
             else:
-                self.prompt_template = sample_llm_prompt_template(seed=sample_kwargs['prompt_template_seed'])
+                self.prompt_template = sample_llm_prompt_template(seed=sample_kwargs['prompt_template_seed'], include_options=include_options)
     
     def load_and_apply_prompt_template(
         self,
@@ -206,6 +225,9 @@ class QADataset(torch.utils.data.Dataset, metaclass=abc.ABCMeta):
         '''Loads and applies the selected/sampled prompt template to the data.'''
 
         from llm.utils import allows_system_prompts
+
+        # Check if the QA dataset is multiple-choice
+        include_options = len(self.qa_dict[self.main_split][0]) > 2
 
         if tokenize:
             if tokenizer is None:
@@ -231,112 +253,224 @@ class QADataset(torch.utils.data.Dataset, metaclass=abc.ABCMeta):
                 parsed_model_name, 
                 self.name,
                 prompt_type, 
+                include_options=include_options,
                 sample_kwargs=sample_kwargs
             )
 
         few_shot_qas = getattr(self, 'few_shot_qas', None)
         qas = self.qa_dict[self.main_split]
         pbar = tqdm(qas, desc=f'Applying template to "{self.main_split}" split', unit='QA pair', disable=(not self.verbose), total=len(qas))
-        for (question, options, answer) in pbar:
-            # Models with chat templates provided via the tokenizer
-            if parsed_model_name in CHAT_MODELS:
-                # Load question and answer templates
-                q_template = self.prompt_template['question']
-                a_template = self.prompt_template['answer']
-                conv = []
-
-                if allows_system_prompts(tokenizer) and prompt_type != 'zero-shot-ft':
-                    conv.append({'role': 'system', 'content': self.system_prompt})
-                
-                # Add few-shot examples to conversation
-                if few_shot_qas is not None:
-                    for i, (fs_question, fs_options, fs_answer) in enumerate(few_shot_qas):
-                        fs_q_prompt = q_template.render(question=fs_question, options=fs_options)
-                        fs_a_prompt = a_template.render(options=fs_options, answer=fs_answer)
-                        
-                        if i == 0 and not allows_system_prompts(tokenizer) and prompt_type != 'zero-shot-ft':
-                            fs_q_prompt = f'{self.system_prompt}\n{fs_question}'
-
-                        conv.append({'role': 'user', 'content': fs_q_prompt})
-                        conv.append({'role': 'assistant', 'content': fs_a_prompt})
-                    
-                # Add QA pair
-                q_prompt = q_template.render(question=question, options=options)
-                conv.append({'role': 'user', 'content': q_prompt})
-
-                if tokenize:
-                    # Add generation header for Llama-3 and OpenBioLLM models
-                    if any([m in parsed_model_name for m in ['llama-3', 'openbiollm']]):
-                        context_len = len(tokenizer.apply_chat_template(conv, return_tensors='pt', add_generation_prompt=True)[0])
-                    elif 'mistral-7b-v0.1' in parsed_model_name:
-                        context_len = len(tokenizer.apply_chat_template(conv, return_tensors='pt')[0]) - 1
-                    else:
-                        context_len = len(tokenizer.apply_chat_template(conv, return_tensors='pt')[0])
-
-                    a_prompt = a_template.render(options=options, answer=answer)
-                    conv.append({'role': 'assistant', 'content': a_prompt})
-                    input_ids = tokenizer.apply_chat_template(
-                        conv,
-                        return_tensors='pt',
-                        truncation=True,
-                        max_length=tokenizer.model_max_length
-                    )
-                    label_ids = input_ids.clone()
-                    label_ids[0,:context_len] = IGNORE_INDEX
-
-                    self.qas[self.main_split]['input_ids'].append(input_ids)
-                    self.qas[self.main_split]['label_ids'].append(label_ids)
-
-                else:
-                    a_prompt = a_template.render(options=options, answer=None)
-                    conv.append({'role': 'assistant', 'content': a_prompt})
-                    prompt = tokenizer.apply_chat_template(conv, tokenize=False)
-
-                    if prompt.strip().endswith(tokenizer.eos_token):
-                        prompt = prompt[:prompt.rindex(tokenizer.eos_token)]
-
-                    if prompt.strip().endswith('<|eot_id|>'):
-                        prompt = prompt[:prompt.rindex('<|eot_id|>')]
-
-                    self.qas[self.main_split].append(prompt)
+        for sample in pbar:
+            is_mcq = len(sample) > 2
             
-            # Models without any chat template
-            else:
-                context = self.prompt_template['full'].render(
-                    system_prompt=(None if prompt_type == 'zero-shot-ft' else self.system_prompt),
-                    few_shot_qas=few_shot_qas,
-                    qa=(question, options, None)
-                )
+            # MCQ Datasets
+            if is_mcq:
+                question, options, answer = sample
+                answer_letter = chr(ord('A') + options.index(answer))
+            
+                # Models with chat templates provided via the tokenizer
+                if parsed_model_name in CHAT_MODELS:
+                    # Load question and answer templates
+                    q_template = self.prompt_template['question']
+                    a_template = self.prompt_template['answer']
+                    conv = []
 
-                if tokenize:
-                    prompt = self.prompt_template['full'].render(
+                    if allows_system_prompts(tokenizer) and prompt_type != 'zero-shot-ft':
+                        conv.append({'role': 'system', 'content': self.system_prompt})
+                    
+                    # Add few-shot examples to conversation
+                    if few_shot_qas is not None:
+                        for i, (fs_question, fs_options, fs_answer) in enumerate(few_shot_qas):
+                            fs_q_prompt = q_template.render(question=fs_question, options=fs_options)
+                            fs_a_prompt = a_template.render(options=fs_options, answer=fs_answer)
+                            
+                            if i == 0 and not allows_system_prompts(tokenizer) and prompt_type != 'zero-shot-ft':
+                                fs_q_prompt = f'{self.system_prompt}\n{fs_question}'
+
+                            conv.append({'role': 'user', 'content': fs_q_prompt})
+                            conv.append({'role': 'assistant', 'content': fs_a_prompt})
+                        
+                    # Add QA pair
+                    q_prompt = q_template.render(question=question, options=options)
+                    a_prompt = a_template.render(options=options, answer=None)
+                    conv.append({'role': 'user', 'content': q_prompt})
+                    conv.append({'role': 'assistant', 'content': a_prompt})
+                    context = tokenizer.apply_chat_template(conv, tokenize=False) # Input prompt
+
+                    if context.strip().endswith(tokenizer.eos_token):
+                        context = context[:context.rindex(tokenizer.eos_token)]
+
+                    if context.strip().endswith('<|eot_id|>'):
+                        context = context[:context.rindex('<|eot_id|>')]
+
+                    if tokenize:
+                        context_ids = tokenizer(context, return_tensors='pt', add_special_tokens=False).input_ids
+                        context_len = len(context_ids[0])
+                        eos_token = (
+                            '<|eot_id|>' if any([m in parsed_model_name for m in ['llama-3', 'openbiollm']]) 
+                            else tokenizer.eos_token
+                        )
+                        answer_ids = tokenizer(
+                            f'({answer_letter}) {answer}{eos_token}',
+                            return_tensors='pt',
+                            add_special_tokens=False
+                        ).input_ids
+                        input_ids = torch.cat([context_ids, answer_ids], axis=-1)
+                        label_ids = input_ids.clone()
+                        label_ids[0,:context_len] = IGNORE_INDEX
+
+                        self.qas[self.main_split]['input_ids'].append(input_ids)
+                        self.qas[self.main_split]['label_ids'].append(label_ids)
+                    else:
+                        self.qas[self.main_split].append(context)
+                
+                # Models without any chat template
+                else:
+                    context = self.prompt_template['full'].render(
                         system_prompt=(None if prompt_type == 'zero-shot-ft' else self.system_prompt),
                         few_shot_qas=few_shot_qas,
-                        qa=(question, options, answer)
+                        qa=(question, options, None)
                     )
-                    context = tokenizer(context, return_tensors='pt').input_ids[0]
-                    context_len = len(context)
 
-                    if parsed_model_name in ['llama-3-8b', 'llama-2-70b', 'llama-2-7b', 'meditron-70b', 'meditron-7b']:
-                        context_len -= 1
+                    if tokenize:
+                        context_ids = tokenizer(context, return_tensors='pt').input_ids
+                        context_len = len(context_ids[0])
+                        answer_str = f'({answer_letter}) {answer}{tokenizer.eos_token}'
+                        answer_ids = tokenizer(
+                            answer_str[1:] if 'biomistral' in parsed_model_name else answer_str, 
+                            return_tensors='pt', 
+                            add_special_tokens=False
+                        ).input_ids
+                        input_ids = torch.cat([context_ids, answer_ids], axis=-1)
+                        label_ids = input_ids.clone()
+                        label_ids[0,:context_len] = IGNORE_INDEX
+                        
+                        self.qas[self.main_split]['input_ids'].append(input_ids)
+                        self.qas[self.main_split]['label_ids'].append(label_ids)
+                    else:
+                        self.qas[self.main_split].append(context)
+
+            # Non-MCQ Datasets
+            else:
+                question, answer = sample
+
+                # Models with chat templates provided via the tokenizer
+                if parsed_model_name in CHAT_MODELS:
+                    # Load question and answer templates
+                    q_template = self.prompt_template['question']
+                    a_template = self.prompt_template['answer']
+                    conv = []
+
+                    if allows_system_prompts(tokenizer) and prompt_type != 'zero-shot-ft':
+                        conv.append({'role': 'system', 'content': self.system_prompt})
                     
-                    prompt += tokenizer.eos_token
-                    
-                    tokenized_text = tokenizer(
-                        prompt,
-                        return_tensors='pt',
-                        truncation=True,
-                        max_length=tokenizer.model_max_length
-                    )
-                    input_ids = tokenized_text.input_ids
-                    label_ids = input_ids.clone()
-                    label_ids[0,:context_len] = IGNORE_INDEX
-                    
-                    self.qas[self.main_split]['input_ids'].append(input_ids)
-                    self.qas[self.main_split]['label_ids'].append(label_ids)
+                    # Add few-shot examples to conversation
+                    if few_shot_qas is not None:
+                        for i, (fs_question, fs_answer) in enumerate(few_shot_qas):
+                            fs_q_prompt = q_template.render(question=fs_question)
+                            fs_a_prompt = (
+                                a_template.render(answer=fs_answer[0]) 
+                                if isinstance(fs_answer, list) 
+                                else a_template.render(answer=fs_answer)
+                            )
+                            
+                            if i == 0 and not allows_system_prompts(tokenizer) and prompt_type != 'zero-shot-ft':
+                                fs_q_prompt = f'{self.system_prompt}\n{fs_question}'
+
+                            conv.append({'role': 'user', 'content': fs_q_prompt})
+                            conv.append({'role': 'assistant', 'content': fs_a_prompt})
+                        
+                    # Add QA pair
+                    q_prompt = q_template.render(question=question)
+                    conv.append({'role': 'user', 'content': q_prompt})
+
+                    if tokenize:
+                        # Add generation header for Llama-3 and OpenBioLLM models
+                        if any([m in parsed_model_name for m in ['llama-3', 'openbiollm']]):
+                            context_len = len(tokenizer.apply_chat_template(conv, return_tensors='pt', add_generation_prompt=True)[0])
+                        elif 'mistral-7b-v0.1' in parsed_model_name:
+                            context_len = len(tokenizer.apply_chat_template(conv, return_tensors='pt')[0]) - 1
+                        else:
+                            context_len = len(tokenizer.apply_chat_template(conv, return_tensors='pt')[0])
+
+                        a_prompt = a_template.render(answer=answer)
+                        conv.append({'role': 'assistant', 'content': a_prompt})
+                        input_ids = tokenizer.apply_chat_template(
+                            conv,
+                            return_tensors='pt',
+                            truncation=True,
+                            max_length=tokenizer.model_max_length
+                        )
+                        label_ids = input_ids.clone()
+                        label_ids[0,:context_len] = IGNORE_INDEX
+
+                        self.qas[self.main_split]['input_ids'].append(input_ids)
+                        self.qas[self.main_split]['label_ids'].append(label_ids)
+
+                    else:
+                        a_prompt = a_template.render(answer=None)
+                        conv.append({'role': 'assistant', 'content': a_prompt})
+                        prompt = tokenizer.apply_chat_template(conv, tokenize=False)
+
+                        if prompt.strip().endswith(tokenizer.eos_token):
+                            prompt = prompt[:prompt.rindex(tokenizer.eos_token)]
+
+                        if prompt.strip().endswith('<|eot_id|>'):
+                            prompt = prompt[:prompt.rindex('<|eot_id|>')]
+
+                        self.qas[self.main_split].append(prompt)
                 
+                # Models without any chat template
                 else:
-                    self.qas[self.main_split].append(context)
+                    if few_shot_qas is not None:
+                        new_few_shot_qas = []
+                        for (fs_question, fs_answer) in few_shot_qas:
+                            new_few_shot_qas.append((fs_question, fs_answer[0] if isinstance(fs_answer, list) else fs_answer))
+
+                        few_shot_qas = new_few_shot_qas
+
+                    context = self.prompt_template['full'].render(
+                        system_prompt=(None if prompt_type == 'zero-shot-ft' else self.system_prompt),
+                        few_shot_qas=few_shot_qas,
+                        qa=(question, None)
+                    )
+
+                    if tokenize:
+                        prompt = self.prompt_template['full'].render(
+                            system_prompt=(None if prompt_type == 'zero-shot-ft' else self.system_prompt),
+                            few_shot_qas=few_shot_qas,
+                            qa=(question, answer)
+                        )
+                        context = tokenizer(context, return_tensors='pt').input_ids[0]
+                        context_len = len(context)
+
+                        if parsed_model_name in [
+                            'llama-3-8b', 
+                            'llama-2-70b', 
+                            'llama-2-7b', 
+                            'meditron-70b', 
+                            'meditron-7b',
+                            'biomedgpt-7b'
+                        ]:
+                            context_len -= 1
+                        
+                        prompt += tokenizer.eos_token
+                        
+                        tokenized_text = tokenizer(
+                            prompt,
+                            return_tensors='pt',
+                            truncation=True,
+                            max_length=tokenizer.model_max_length
+                        )
+                        input_ids = tokenized_text.input_ids
+                        label_ids = input_ids.clone()
+                        label_ids[0,:context_len] = IGNORE_INDEX
+                        
+                        self.qas[self.main_split]['input_ids'].append(input_ids)
+                        self.qas[self.main_split]['label_ids'].append(label_ids)
+                    
+                    else:
+                        self.qas[self.main_split].append(context)
 
         if tokenize:
             self.tokenized = True
@@ -369,9 +503,6 @@ class QADataset(torch.utils.data.Dataset, metaclass=abc.ABCMeta):
             if type(idx) == int:
                 return (input_id_list[idx], label_id_list[idx])
             
-            elif isinstance(idx, Iterable):
-                return [(input_id_list[i], label_id_list[i]) for i in idx]
-        
             elif isinstance(idx, slice):
                 start = idx.start
                 stop = idx.stop
@@ -379,9 +510,254 @@ class QADataset(torch.utils.data.Dataset, metaclass=abc.ABCMeta):
                 idx = range(start, stop, step)
 
                 return [(input_id_list[i], label_id_list[i]) for i in idx]
+
+            elif isinstance(idx, Iterable):
+                return [(input_id_list[i], label_id_list[i]) for i in idx]
+
         else:
             return self.qas[self.main_split][idx]
         
+class MedNLIDataset(QADataset):
+    '''Dataset class for MedNLI (Romano and Shivade, 2018).'''
+
+    def __init__(self, name='mednli', qa_dir='mednli', **kwargs):
+        super(MedNLIDataset, self).__init__(name=name, qa_dir=qa_dir, **kwargs)
+        self.load_qas()
+
+    def load_qas(self) -> None:
+        '''Loads and preprocesses the given question-answer pairs.'''
+
+        for split in self.splits:
+            try:
+                qa_path = osp.join(self.qa_dir, f'mli_{"dev" if split == "val" else split}_v1.jsonl')
+                qa_data = read_jsonl(qa_path)
+            except:
+                logging.error(f'QA data for "{split}" split not found.')
+                raise FileNotFoundError
+        
+            questions = []
+            answers = []
+            options = []
+
+            pbar = tqdm(qa_data, desc=f'Loading the "{split}" split', unit='QA pair', disable=(not self.verbose), total=len(qa_data))
+            for qa_sample in pbar:
+                premise = qa_sample['sentence1'].strip()
+                hypothesis = qa_sample['sentence2'].strip()
+                
+                # Format reference: Appendix D of Lehman et al. (2023)
+                question = f'Premise: "{premise}"\nHypothesis: "{hypothesis}".'
+                questions.append(question)
+                options.append(['entailment', 'contradiction', 'neutral'])
+                answers.append(qa_sample['gold_label'])
+
+            self.qa_dict[split] = list(zip(questions, options, answers))
+
+class EHRNoteQADataset(QADataset):
+    '''Dataset class for EHRNoteQA (Kweon et al., 2024).'''
+
+    def __init__(self, name='ehrnoteqa', qa_dir='ehrnoteqa', levels=['level1'], **kwargs):
+        super(EHRNoteQADataset, self).__init__(name=name, qa_dir=qa_dir, **kwargs)
+        self.levels = levels # 'level1': Notes with <= 3000 tokens; 'level2': Notes with 3000-7000 tokens
+        self.load_qas()
+
+    def load_qas(self) -> None:
+        '''Loads and preprocesses the given question-answer pairs.'''
+
+        try:
+            qa_path = osp.join(self.qa_dir, 'EHRNoteQA_processed.jsonl')
+            full_qa_data = read_jsonl(qa_path)
+        except:
+            logging.error(f'Preprocessed EHRNoteQA data not found.')
+            raise FileNotFoundError
+
+        # Filter all samples based on their level
+        full_qa_data = [qa_sample for qa_sample in full_qa_data if qa_sample['category'] in self.levels]
+
+        # Precompute the split indices
+        n_total = len(full_qa_data)
+        n_val = n_test = int(n_total * 0.2)
+        train_idx, test_idx = train_test_split(np.arange(n_total), test_size=n_test, random_state=self.seed)
+        train_idx, val_idx = train_test_split(train_idx, test_size=n_val, random_state=self.seed)
+        idx_splits = dict(train=train_idx, val=val_idx, test=test_idx)
+
+        for split in self.splits:
+            qa_data = [full_qa_data[i] for i in idx_splits[split]]
+            questions = []
+            answers = []
+            options = []
+
+            pbar = tqdm(qa_data, desc=f'Loading the "{split}" split', unit='QA pair', disable=(not self.verbose), total=len(qa_data))
+            for qa_sample in pbar:
+                discharge_notes = [qa_sample[f'note_{i}'] for i in range(1,4)]
+                discharge_notes = [note for note in discharge_notes if note != '']
+                context = '\n\n'.join(discharge_notes)
+                question = f'\n{context}\n\n\n{qa_sample["question"]}'
+
+                questions.append(question)
+                answers.append(qa_sample[f'choice_{qa_sample["answer"]}'])
+                options.append([qa_sample[f'choice_{c}'] for c in ['A','B','C','D','E']])
+
+            self.qa_dict[split] = list(zip(questions, options, answers))
+
+class CASISenseDataset(QADataset):
+    '''
+        Dataset class for the CASI dataset (Moon et al., 2024).
+
+        NOTE: We use the version that follows the preprocessing steps in Adams et al. (2020).
+
+    '''
+
+    def __init__(self, name='casi-sense', qa_dir='casi-sense-preprocessed', **kwargs):
+        super(CASISenseDataset, self).__init__(name=name, qa_dir=qa_dir, **kwargs)
+        self.load_qas()
+
+    def parse_lf(self, lf: str) -> str:
+        '''Parses the long-form of a clinical acronym to more readable format.'''
+
+        if ';' in lf:
+            lfs = lf.split(';')
+            lfs = list(set([l.lower() for l in lfs]))
+            lf = ' / '.join(lfs) # 'discontinue / discontinued'
+
+        return lf
+
+    def load_qas(self) -> None:
+        '''Loads and preprocesses the given question-answer pairs.'''
+
+        # Load the full dataset
+        try:
+            full_dataset = load_from_disk(self.qa_dir)
+        except:
+            logging.error(f'Preprocessed "{self.name}" data not found.')
+            raise FileNotFoundError
+        
+        # Load the short-form to long-form mappings
+        try:
+            sf_lf_map = json.load(open(osp.join(self.qa_dir, 'sf_lf_map.json')))
+        except:
+            logging.error('Short-form to long-form mappings not found.')
+            raise FileNotFoundError
+
+        for split in self.splits:
+            dataset = full_dataset[split]
+
+            questions = []
+            answers = []
+            options = []
+
+            pbar = tqdm(dataset, desc=f'Loading the "{split}" split', unit='QA pair', disable=(not self.verbose), total=len(dataset))
+            for qa_sample in pbar:
+                sf = qa_sample['sf']
+                answer = self.parse_lf(qa_sample['target_lf_sense'])
+                context = qa_sample['context']
+                qa_options = [self.parse_lf(l) for l in sf_lf_map[sf]]
+                question = f'"{context}"\n\nWhat is the correct expansion for the acronym "{sf}" in the above clinical note snippet?'
+                assert(answer in qa_options)
+
+                questions.append(question)
+                answers.append(answer)
+                options.append(qa_options)
+
+            self.qa_dict[split] = list(zip(questions, options, answers))
+
+class MIMICIIISenseDataset(QADataset):
+    '''Dataset class for the MIMIC-III clinical sense disambiguation dataset (Adams et al., 2020).'''
+
+    def __init__(self, name='mimic-iii-sense', qa_dir='mimic-iii-sense-preprocessed', **kwargs):
+        super(MIMICIIISenseDataset, self).__init__(name=name, qa_dir=qa_dir, **kwargs)
+        self.load_qas()
+
+    def parse_lf(self, lf: str) -> str:
+        '''Parses the long-form of a clinical acronym to more readable format.'''
+
+        if ';' in lf:
+            lfs = lf.split(';')
+            lfs = list(set([l.lower() for l in lfs]))
+            lf = ' / '.join(lfs) # 'discontinue / discontinued'
+
+        return lf
+
+    def load_qas(self) -> None:
+        '''Loads and preprocesses the given question-answer pairs.'''
+
+        # Load the full dataset
+        try:
+            full_dataset = load_from_disk(self.qa_dir)
+        except:
+            logging.error(f'Preprocessed "{self.name}" data not found.')
+            raise FileNotFoundError
+        
+        # Load the short-form to long-form mappings
+        try:
+            sf_lf_map = json.load(open(osp.join(self.qa_dir, 'sf_lf_map.json')))
+        except:
+            logging.error('Short-form to long-form mappings not found.')
+            raise FileNotFoundError
+
+        for split in self.splits:
+            dataset = full_dataset[split]
+
+            questions = []
+            answers = []
+            options = []
+
+            pbar = tqdm(dataset, desc=f'Loading the "{split}" split', unit='QA pair', disable=(not self.verbose), total=len(dataset))
+            for qa_sample in pbar:
+                sf = qa_sample['sf']
+                answer = self.parse_lf(qa_sample['target_lf_sense'])
+                context = qa_sample['context']
+                qa_options = [self.parse_lf(l) for l in sf_lf_map[sf]]
+                question = f'"{context}"\n\nWhat is the correct expansion for the acronym "{sf}" in the above clinical note snippet?'
+                assert(answer in qa_options)
+
+                questions.append(question)
+                answers.append(answer)
+                options.append(qa_options)
+
+            self.qa_dict[split] = list(zip(questions, options, answers))
+
+class n2c2Dataset(QADataset):
+    '''Dataset class for the n2c2 datasets.'''
+
+    def __init__(self, name='n2c2_2008-obesity_asthma', qa_dir='n2c2_2018-obesity_asthma', **kwargs):
+        super(n2c2Dataset, self).__init__(name=name, qa_dir=qa_dir, **kwargs)
+        _, self.subset_name, self.task_name = name.split('_')
+        self.load_qas()
+
+    def load_qas(self) -> None:
+        '''Loads and preprocesses the given question-answer pairs.'''
+
+        try:
+            full_dataset = load_from_disk(self.qa_dir)
+        except:
+            logging.error(f'Preprocessed "{self.name}" data not found.')
+            raise FileNotFoundError
+    
+        for split in self.splits:
+            dataset = full_dataset['train' if split == 'val' else split]
+
+            if split in ['train', 'val']:
+                split_dataset = dataset.train_test_split(test_size=0.2, seed=self.seed)
+                dataset = split_dataset['train'] if split == 'train' else split_dataset['test']
+                
+            questions = []
+            answers = []
+            options = []
+
+            pbar = tqdm(dataset, desc=f'Loading the "{split}" split', unit='QA pair', disable=(not self.verbose), total=len(dataset))
+            for qa_sample in pbar:
+                option_dict = dict(Y='Yes', N='No', Q='Questionable')
+                note = qa_sample['text']
+                question = f'{note}\n\nDoes this patient have {self.task_name.upper() if self.task_name == "cad" else self.task_name}?'
+                answer = option_dict[qa_sample['label']]
+                qa_options = ['Yes', 'No', 'Questionable']
+                    
+                questions.append(question)
+                answers.append(answer)
+                options.append(qa_options)
+
+            self.qa_dict[split] = list(zip(questions, options, answers))
+
 class MedQADataset(QADataset):
     '''Dataset class for MedQA (Jin et al., 2021).'''
 
@@ -390,7 +766,8 @@ class MedQADataset(QADataset):
         self.load_qas()
 
     def load_qas(self) -> None:
-        hf_dataset = load_dataset(self.qa_dir, cache_dir=self.hf_cache_dir, trust_remote_code=True)
+        subset = 'med_qa_en_4options_source' if self.name == 'medqa-usmle' else 'med_qa_en_source'
+        hf_dataset = load_dataset(self.qa_dir, subset, cache_dir=self.hf_cache_dir, trust_remote_code=True)
         
         for split in self.splits:
             dataset = hf_dataset['validation' if split == 'val' else split]
@@ -488,7 +865,7 @@ class MedMCQADataset(QADataset):
                 ])
                 answers.append(options[-1][qa_sample['cop']])
                 
-            self.qa_dict[split] = list(zip(questions, options, answers))         
+            self.qa_dict[split] = list(zip(questions, options, answers))
 
 class MMLUMedicalDataset(QADataset):
     '''Dataset class for medical datasets in MMLU (Hendrycks et al., 2021).'''
@@ -869,7 +1246,6 @@ class VQADataset(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return len(self.qa_dict[self.main_split])
     
-    # FIXME
     def __getitem__(self, idx: int) -> Tuple[str,str]:
         return self.qas[self.main_split][idx]
 

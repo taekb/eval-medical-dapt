@@ -1,0 +1,4 @@
+name: med42-v2-70b
+path: m42-health/Llama3-Med42-70B
+attn_implementation: flash_attention_2
+start_stage: 2

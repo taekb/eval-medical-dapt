@@ -3,7 +3,7 @@
 # Check if GPU indices were specified
 if [ "$#" -ne 2 ]; then
     echo "Usage: $0 \"arg1 arg2 ...\" \"arg\" \"arg\""
-    echo "Arg1: GPU indices, Arg2: Generation approach (one of \"greedy\"/\"sc\"/\"logprob\")"
+    echo "Arg1: GPU indices, Arg2: Generation approach (one of \"greedy\"/\"logprob\")"
     echo "Example: $0 \"0 1 2 3\" \"greedy\""
     exit 1
 fi

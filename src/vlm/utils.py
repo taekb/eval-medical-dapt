@@ -181,7 +181,6 @@ def sample_vlm_prompt_template(seed=42):
 
     return template_dict
 
-
 '''
     Default system prompts and templates used by the authors of each model.
 

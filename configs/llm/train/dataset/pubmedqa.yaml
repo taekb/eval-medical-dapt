@@ -1,0 +1,2 @@
+name: pubmedqa
+data_path: 'bigbio/pubmed_qa'

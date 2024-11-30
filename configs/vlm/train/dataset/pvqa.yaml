@@ -1,0 +1,4 @@
+name: pvqa
+image_folder: 'pvqa/images'
+data_path: 'pvqa/combined/train.jsonl'
+eval_data_path: 'pvqa/combined/val.jsonl'

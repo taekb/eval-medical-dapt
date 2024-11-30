@@ -1,0 +1,4 @@
+name: llama-3-8b-instruct
+path: meta-llama/Meta-Llama-3-8B-Instruct
+attn_implementation: flash_attention_2
+start_stage: 0

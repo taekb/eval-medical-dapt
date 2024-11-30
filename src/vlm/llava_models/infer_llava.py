@@ -46,7 +46,7 @@ from llava.constants import (
     DEFAULT_IM_END_TOKEN, # <im_end>
 )
 
-from old_llava import LlavaLlamaForCausalLM as OldLlavaLlamaForCausalLM, get_vlm_prompt_template
+from old_llava import LlavaLlamaForCausalLM as OldLlavaLlamaForCausalLM
 
 from peft import PeftModel
 
@@ -55,7 +55,7 @@ SRC_DIR = osp.dirname(osp.dirname(osp.dirname(osp.abspath(__file__))))
 VLM_DIR = osp.join(SRC_DIR, 'vlm')
 sys.path += [SRC_DIR, VLM_DIR]
 
-from utils import remove_punc, white_space_fix
+from utils import remove_punc, white_space_fix, get_vlm_system_prompt, sample_vlm_prompt_template
 
 from dataset import (
     VQARADDataset,
@@ -80,16 +80,20 @@ COMPONENTS_TO_FIX_FOR_SAMPLING = {
     'open-flamingo-9b': ['system_prompt'],
     'med-flamingo-9b': ['system_prompt']
 }
-GENERAL_MODEL_TO_MEDICAL_MODEL = {'llava-v0-7b': 'llava-med-7b'}
+GENERAL_MODEL_TO_MEDICAL_MODEL = {
+    'llava-v0-7b': 'llava-med-7b',
+    'open-flamingo-9b': 'med-flamingo-9b'
+}
 
 '''
     Exact-match accuracy evaluation functions.
 
 '''
 
-def extract_pred(output, answer_letter, answer, options):
+def extract_pred(output, answer, options):
     '''Extracts the prediction from the output text.'''
-
+    
+    option_letters = [chr(ord('A') + i) for i in range(len(options))]
     answer_idx = options.index(answer)
     answer_letter = chr(ord('A') + answer_idx)
     pred = None
@@ -108,7 +112,16 @@ def extract_pred(output, answer_letter, answer, options):
 
     # Handle cases where the model repeats the answer choices
     elif len(candidates) > 1:
-        pred = None
+        parsed_candidates = []
+        for candidate in candidates:
+            for option_letter in option_letters:
+                if option_letter in candidate:
+                    parsed_candidates.append(option_letter)
+
+        if len(set(parsed_candidates)):
+            pred = parsed_candidates[0]
+        else:
+            pred = None
 
     # Check if the fully expanded answer is in the output
     # e.g., if the correct option was "(A) heart rate", we check for "heart rate"
@@ -153,7 +166,7 @@ def evaluate_accuracy_exact_match(results, verbose=False):
 
         # Fetch predictions and take majority vote
         preds = [
-            extract_pred(output.strip(), answer_letter, answer, options)
+            extract_pred(output.strip(), answer, options)
             for output in results['outputs'][i]
         ]
         preds = [p for p in preds if p is not None]
@@ -235,8 +248,7 @@ def main(args):
     # LLaVA-v1.5 models
     if 'llava-v1' in args.model.path:
         # Load the pretrained LLaVA model
-        # TODO: Check if this works for (Q)LoRA-tuned models as well
-        use_flash_attn = (llava_args.attn_implementation == 'flash_attention_2')
+        use_flash_attn = (args.attn_implementation == 'flash_attention_2')
         tokenizer, model, image_processor, _ = load_pretrained_model(
             model_path=args.model.path,
             model_base=args.model.base,
@@ -289,7 +301,7 @@ def main(args):
             )
             model = OldLlavaLlamaForCausalLM.from_pretrained(
                 args.model.base,
-                attn_implementation=llava_args.attn_implementation, 
+                attn_implementation=args.attn_implementation, 
                 torch_dtype=compute_dtype, 
                 use_cache=True,
                 device_map=device,
@@ -319,7 +331,7 @@ def main(args):
             )
             model = OldLlavaLlamaForCausalLM.from_pretrained(
                 args.model.path, 
-                attn_implementation=llava_args.attn_implementation,
+                attn_implementation=args.attn_implementation,
                 torch_dtype=compute_dtype, 
                 use_cache=True,
                 device_map=device,
@@ -405,7 +417,7 @@ def main(args):
         questions, options, answers, images = zip(*raw_qas)
         output_texts = [] # Generated texts
         confidences = [] # Full softmax scores over options
-        top_confidences = [] # Confidence scores for the top option
+        pred_confidences = [] # Confidence scores for the top option
 
         with accelerator.split_between_processes(list(zip(range(len(qas)), qas))) as acc_qas:
             pbar = tqdm(acc_qas, disable=(not accelerator.is_main_process), total=len(acc_qas))
@@ -418,38 +430,32 @@ def main(args):
                 if args.constrain_vocab:
                     # NOTE: tokenizer.vocab_size doesn't include added tokens like DEFAULT_IMAGE_PATCH_TOKEN
                     # Should therefore use len(tokenizer) to completely remove everything except the option tokens.
-                    whitelist = [tokenizer.convert_tokens_to_ids(t) for t in options[idx]]
+                    whitelist = [tokenizer.convert_tokens_to_ids(chr(ord('A')+i)) for i in range(len(options[idx]))]
                     bad_words_ids = [[i] for i in range(len(tokenizer)) if i not in whitelist]
                 else:
                     bad_words_ids = None
 
                 # Generation config
-                if llava_args.temperature == 0 or args.predict_with_logprob:
-                    seeds = [DEFAULT_SEED]
-                else:
-                    seeds = np.arange(0,args.n_seeds)
-
-                stop_criteria = stop_criteria_class(keywords, tokenizer, torch.as_tensor(input_ids).cuda())
+                seeds = [DEFAULT_SEED] if args.temperature == 0 else np.arange(0,args.n_seeds)
 
                 qa_output_texts = []
                 qa_confidences = []
-                qa_top_confidences = []
+                qa_pred_confidences = []
                 for seed in seeds:
                     transformers.set_seed(seed)
+
+                    stop_criteria = stop_criteria_class(keywords, tokenizer, torch.as_tensor(input_ids).cuda())
 
                     # Generate output tokens
                     with torch.inference_mode():
                         outputs = model.generate(
                             input_ids,
                             images=qa_images,
-                            do_sample=(True if llava_args.temperature > 0 else False),
-                            temperature=llava_args.temperature,
-                            top_p=llava_args.top_p,
-                            num_beams=llava_args.num_beams,
-                            max_new_tokens=(
-                                1 if args.constrain_vocab or args.predict_with_logprob
-                                else llava_args.max_new_tokens
-                            ),
+                            do_sample=(True if args.temperature > 0 else False),
+                            temperature=args.temperature,
+                            top_p=args.top_p,
+                            num_beams=args.num_beams,
+                            max_new_tokens=(1 if args.constrain_vocab else args.max_new_tokens),
                             use_cache=True,
                             stopping_criteria=[stop_criteria],
                             bad_words_ids=bad_words_ids,
@@ -469,40 +475,39 @@ def main(args):
                     if sep_style == 'SINGLE':
                         output_text = output_text.split(conv.sep)[0].strip()
                         
+                    # Contrain the output vocabulary
                     if args.constrain_vocab:
-                        # Extract token probabilities
-                        probs = torch.softmax(outputs.scores[0].squeeze(0), dim=0)
-                        option_idxs = [tokenizer.convert_tokens_to_ids(option) for option in options[idx]]
+                        logits = outputs.scores[0].squeeze(0).clone()
+                        eos_bias = torch.zeros_like(logits)
+                        eos_bias[tokenizer.eos_token_id] = -torch.inf
+                        logits += eos_bias
+                        probs = torch.softmax(logits, dim=0)
+                        option_idxs = [tokenizer.convert_tokens_to_ids(chr(ord('A')+i)) for i in range(len(options[idx]))]
                         option_probs = probs[option_idxs]
                         Z = torch.sum(option_probs)
                         option_probs /= Z # Normalize
 
-                        try:
-                            top_confidence = option_probs[options[idx].index(output_text)].item() # Confidence for top option
-                            assert(top_confidence == torch.max(option_probs)) # Sanity check
-                        except:
-                            logging.warning(
-                                f'Invalid option generated: "{output_text}". Replacing with valid option with highest confidence.'
-                            )
-                            output_text = options[idx][torch.argmax(option_probs)]
-                            top_confidence = option_probs[options[idx].index(output_text)].item()
-                            assert(top_confidence == torch.max(option_probs)) # Sanity check
+                        # Take the argmax of token probabilities
+                        if args.temperature == 0:
+                            output_idx = torch.argmax(option_probs)
+                            output_text = chr(ord('A') + output_idx)
+                            confidence = torch.max(option_probs).item()
+                        
+                        # Sample from the constrained vocabulary
+                        elif args.temperature > 0:
+                            torch.manual_seed(seed)
+                            output_idx = torch.multinomial(option_probs, 1).item()
+                            output_text = chr(ord('A') + output_idx)
+                            confidence = option_probs[output_idx].item()
 
-                        qa_confidences.append(option_probs.cpu().numpy())
-                        qa_top_confidences.append(top_confidence)
-
-                    elif args.predict_with_logprob:
-                        # Extract token probabilities
-                        logprobs = outputs.scores[0].squeeze(0)
-                        option_idxs = [tokenizer.convert_tokens_to_ids(option) for option in options[idx]]
-                        option_logprobs = logprobs[option_idxs]
-                        output_text = options[idx][torch.argmax(option_logprobs).item()] # Replace generated output
+                        qa_confidences.append(option_probs.cpu().float().numpy())
+                        qa_pred_confidences.append(confidence)
                         
                     qa_output_texts.append(output_text)
 
                 output_texts.append(qa_output_texts)
                 confidences.append(qa_confidences)
-                top_confidences.append(qa_top_confidences)
+                pred_confidences.append(qa_pred_confidences)
 
         results = dict(
             questions=questions, 
@@ -510,7 +515,7 @@ def main(args):
             answers=answers,
             options=options,
             confidences=gather_object(confidences),
-            top_confidences=gather_object(top_confidences)
+            pred_confidences=gather_object(pred_confidences)
         )
 
         return results
@@ -636,25 +641,48 @@ def main(args):
         system_prompt_to_use = best_system_prompt
         prompt_template_to_use = best_template
         few_shot_seed_to_use = best_few_shot_seed
-    
+
+    elif args.use_optimized_prompt:
+        # Load the prompt template optimized for the given model
+        logging.info('Using the prompt template optimized for the given model...')
+        val_acc_df = pd.read_csv(osp.join(args.log_dir, 'val_accs.csv'))
+        best_config = val_acc_df[val_acc_df['acc'] == val_acc_df['acc'].max()].iloc[0]
+
+        system_prompt_to_use = get_vlm_system_prompt(args.model.name)
+
+        best_prompt_template_seed = best_config['prompt_template_seed']
+        if best_prompt_template_seed == 'default':
+            prompt_template_to_use = None
+        else:
+            prompt_template_to_use = sample_vlm_prompt_template(seed=int(best_prompt_template_seed))
+
+        best_few_shot_seed = best_config['few_shot_seed']
+        if best_few_shot_seed == 'n/a' or np.isnan(best_few_shot_seed):
+            few_shot_seed_to_use = None
+        else:
+            few_shot_seed_to_use = int(best_few_shot_seed)
+
     elif args.use_med_prompt and args.model.name in GENERAL_MODEL_TO_MEDICAL_MODEL.keys():
         # Load the prompt template optimized for the medical model
-        logging.info('Using the prompt template optimized for the ')
+        logging.info('Using the prompt template optimized for the medical model...')
         med_model_name = GENERAL_MODEL_TO_MEDICAL_MODEL[args.model.name]
         med_log_dir = args.log_dir.replace(args.model.name, med_model_name)
         med_val_acc_df = pd.read_csv(osp.join(med_log_dir, 'val_accs.csv'))
         med_best_config = med_val_acc_df[med_val_acc_df['acc'] == med_val_acc_df['acc'].max()].iloc[0]
+        
+        system_prompt_to_use = get_vlm_system_prompt(med_model_name)
 
-        #med_system_prompt_seed = med_best_config['system_prompt_seed']
         med_prompt_template_seed = med_best_config['prompt_template_seed']
-        med_few_shot_seed = med_best_config['few_shot_seed']
+        if med_prompt_template_seed == 'default':
+            prompt_template_to_use = None
+        else:
+            prompt_template_to_use = sample_vlm_prompt_template(seed=int(med_prompt_template_seed))
 
-        system_prompt_to_use = None
-        prompt_template_to_use = (
-            None if med_prompt_template_seed == 'default' 
-            else get_vlm_prompt_template(args.model.name, prompt_type=args.prompt_type)
-        )
-        few_shot_seed_to_use = None if med_few_shot_seed == 'n/a' else med_few_shot_seed
+        med_few_shot_seed = med_best_config['few_shot_seed']
+        if med_few_shot_seed == 'n/a' or np.isnan(med_few_shot_seed):
+            few_shot_seed_to_use = None
+        else:
+            few_shot_seed_to_use = int(med_few_shot_seed)
     
     else:
         # Otherwise, use the default
@@ -702,6 +730,9 @@ def main(args):
     test_evals, test_acc = evaluate_accuracy_exact_match(results, verbose=accelerator.is_main_process)
     
     if args.use_med_prompt and args.model.name in GENERAL_MODEL_TO_MEDICAL_MODEL.keys():
+        results['outputs_med'] = results.pop('outputs')
+        results['confidences_med'] = results.pop('confidences')
+        results['pred_confidences_med'] = results.pop('pred_confidences')
         results['evals_med'] = test_evals
         results['accuracy_med'] = test_acc
     else:
@@ -729,11 +760,11 @@ def main(args):
 
         # Save results
         results_path = osp.join(args.log_dir, f'{args.eval_split}_results.pkl')
-
+        
         if osp.exists(results_path):
             orig_results = pickle.load(open(results_path, 'rb'))
             results = orig_results | results
-
+        
         with open(results_path, 'wb') as fh:
             pickle.dump(results, fh)
 

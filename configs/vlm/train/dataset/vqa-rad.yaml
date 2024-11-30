@@ -1,0 +1,4 @@
+name: vqa-rad
+image_folder: 'vqa-rad/images'
+data_path: 'vqa-rad/combined/train.jsonl'
+eval_data_path: ''
