@@ -4,7 +4,7 @@
     <img src="./figs/medical-dapt-concept-art.webp" alt="image" width="30%">
 </p>
 
-<br>n
+<br>
 
 This is the official repository for the EMNLP 2024 paper (Oral): 
 > Daniel P. Jeong, Saurabh Garg, Zachary C. Lipton, and Michael Oberst. [Medical Adaptation of Large Language and Vision-Language Models: Are We Making Progress?](https://arxiv.org/abs/2411.04118) *Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing (EMNLP)*.
