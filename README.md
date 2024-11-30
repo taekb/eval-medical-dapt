@@ -1,7 +1,7 @@
 # The Limited Impact of Medical Adaptation of Large Language and Vision-Language Models
 
 <p align="center">
-    <img src="./figs/eval-medical-dapt-robots-fighting.webp" alt="image" width="30%">
+    <img src="./figs/medical-dapt-concept-art.webp" alt="image" width="30%">
 </p>
 
 <br>n
