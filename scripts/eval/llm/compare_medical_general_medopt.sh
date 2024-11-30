@@ -17,10 +17,13 @@ logdir="./llm_logs/compare_medical_general_medopt"
 mkdir -p "${logdir}"
 
 # Llama-3-70B-Instruct
-./eval_few_shot_medopt.sh "llama-3-70b" "${datasets}" "$1" "$2" "med42-v2-70b openbiollm-70b" 2>&1 | tee -a "${logdir}/llama-3-70b_${2}.log"
+./eval_few_shot_medopt.sh "llama-3-70b-instruct" "${datasets}" "$1" "$2" "med42-v2-70b openbiollm-70b" 2>&1 | tee -a "${logdir}/llama-3-70b-instruct_${2}.log"
 
 # Llama-3-8B-Instruct
-./eval_few_shot_medopt.sh "llama-3-8b" "${datasets}" "$1" "$2" "med42-v2-8b" 2>&1 | tee -a "${logdir}/llama-3-8b_${2}.log"
+./eval_few_shot_medopt.sh "llama-3-8b-instruct" "${datasets}" "$1" "$2" "med42-v2-8b" 2>&1 | tee -a "${logdir}/llama-3-8b-instruct_${2}.log"
+
+# Llama-3-8B
+./eval_few_shot_medopt.sh "llama-3-8b" "${datasets}" "$1" "$2" "openbiollm-8b" 2>&1 | tee -a "${logdir}/llama-3-8b_${2}.log"
 
 # Mistral-7B-v0.1
 ./eval_few_shot_medopt.sh "mistral-7b-v0.1" "${datasets}" "$1" "$2" "biomistral-7b" 2>&1 | tee -a "${logdir}/mistral-7b-v0.1_${2}.log"
