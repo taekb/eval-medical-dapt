@@ -1,7 +1,7 @@
 # The Limited Impact of Medical Adaptation of Large Language and Vision-Language Models
 
 <div style="text-align: center;">
-    <img src="./eval-medical-dapt-robots-fighting.webp" alt="image" style="max-height: 300px;" />
+    <img src="./eval-medical-dapt-robots-fighting.webp" alt="image" style="max-height: 10px;" />
 </div>
 
 <br>
@@ -19,29 +19,29 @@ We include all of the code used for preprocessing the medical QA datasets and ru
 ## 🔍 Links For Quick Navigation
 - 📄 Extended Version of Our Paper: [[arXiv](https://arxiv.org/abs/2411.08870)]
 - 📄 EMNLP Version of Our Paper: [[arXiv](https://arxiv.org/abs/2411.04118), [ACL Anthology](https://aclanthology.org/2024.emnlp-main.677/)]
-- [🤖 Models](#🤖-models)
+- [🤖 Models](#-models)
     - [LLMs](#llms)
     - [VLMs](#vlms)
-- [📁 Datasets](#📁-datasets)
+- [📁 Datasets](#-datasets)
     - [Textual QA: Medical Knowledge](#textual-qa-medical-knowledge)
     - [Textual QA: Clinical Notes](#textual-qa-clinical-notes)
     - [Visual QA](#visual-qa)
     - [Configuring the Dataset Paths](#configuring-the-dataset-paths)
-- [🐍 Setting Up the Conda Environment](#🐍-setting-up-the-conda-environment)
-- [📁 Loading the Data](#📁-loading-the-data)
+- [🐍 Setting Up the Conda Environment](#-setting-up-the-conda-environment)
+- [📁 Loading the Data](#-loading-the-data)
     - [Textual QA Datasets](#textual-qa-datasets)
     - [Visual QA Datasets](#visual-qa-datasets)
-- [📊 Zero-/Few-Shot Prompting Experiments with Model-Specific Prompt Selection (Section 4.1)](#📊-zero-few-shot-prompting-experiments-with-model-specific-prompt-selection-section-41)
+- [📊 Zero-/Few-Shot Prompting Experiments with Model-Specific Prompt Selection (Section 4.1)](#-zero-few-shot-prompting-experiments-with-model-specific-prompt-selection-section-41)
+    - [Medical LLM vs. General-Domain LLM](#medical-llm-vs-general-domain-llm)
+    - [Medical VLM vs. General-Domain VLM](#medical-vlm-vs-general-domain-vlm)
+- [📊 Zero-/Few-Shot Prompting Experiments with Prompt Optimized Only for the Medical Model (Section 4.2)](#-zero-few-shot-prompting-experiments-with-prompt-optimized-only-for-the-medical-model-section-42)
     - [Medical LLM vs. General-Domain LLM](#medical-llm-vs-general-domain-llm-1)
     - [Medical VLM vs. General-Domain VLM](#medical-vlm-vs-general-domain-vlm-1)
-- [📊 Zero-/Few-Shot Prompting Experiments with Prompt Optimized Only for the Medical Model (Section 4.2)](#📊-zero-few-shot-prompting-experiments-with-prompt-optimized-only-for-the-medical-model-section-42)
-    - [Medical LLM vs. General-Domain LLM](#medical-llm-vs-general-domain-llm-2)
-    - [Medical VLM vs. General-Domain VLM](#medical-vlm-vs-general-domain-vlm-2)
-- [📊 Supervised Fine-Tuning Experiments (Section 5)](#📊-supervised-fine-tuning-experiments-section-5)
+- [📊 Supervised Fine-Tuning Experiments (Section 5)](#-supervised-fine-tuning-experiments-section-5)
     - [LoRA Fine-Tuning and Evaluation for LLMs](#lora-fine-tuning-and-evaluation-for-llms)
     - [LoRA Fine-Tuning and Evaluation for LLaVA-Med-7B and LLaVA-v0-7B](#lora-fine-tuning-and-evaluation-for-llava-med-7b-and-llava-v0-7b)
     - [Parameter-Efficient Fine-Tuning and Evaluation for Med-Flamingo-9B and Open-Flamingo-9B](#parameter-efficient-fine-tuning-and-evaluation-for-med-flamingo-9b-and-open-flamingo-9b)
-- [🙂 Citing Our Work (BibTeX)](#🙂-citing-our-work-bibtex)
+- [🙂 Citing Our Work (BibTeX)](#-citing-our-work-bibtex)
 
 <br>
 
