@@ -1,4 +1,4 @@
-name: llama-3-70b
+name: llama-3-70b-instruct
 path: meta-llama/Meta-Llama-3-70B-Instruct
 attn_implementation: flash_attention_2
 start_stage: 0
